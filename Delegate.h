@@ -5,10 +5,7 @@
 #include <future>
 #include <chrono>
 #include <random>
-#include <any>
-#include <vector>
 #include <functional>
-#include <map>
 
 class UUID {
 public:
@@ -21,16 +18,21 @@ public:
         static std::uniform_int_distribution<uint32_t> distribution(0, UINT32_MAX);
 
         // 生成四个32位的随机数
-        for (unsigned int&i: uuid.data) {
+        for (auto&i: uuid.data) {
             i = distribution(generator);
         }
+
+        // 设置UUID版本号（4）和变体（RFC 4122）
+        uuid.data[1] = (uuid.data[1] & 0x0FFF) | 0x4000; // 设置版本号为4（0100）
+        uuid.data[2] = (uuid.data[2] & 0x3FFF) | 0x8000; // 设置变体为RFC 4122（1000）
+
         return uuid;
     }
 
     std::string toString() const {
         std::stringstream ss;
         ss << std::hex << std::setfill('0');
-        for (int i = 0; i < 4; ++i) {
+        for (size_t i = 0; i < data.size(); ++i) {
             ss << std::setw(8) << data[i];
             if (i < 3) {
                 ss << '-';
@@ -44,7 +46,7 @@ public:
     }
 
 private:
-    uint32_t data[4]{};
+    std::array<uint32_t, 4> data{};
 };
 
 // Delegate class
@@ -90,10 +92,9 @@ private:
 template<typename R, typename... Args>
 class Delegate<R(Args...)> {
 public:
-    friend class Delegate;
     using FunctionType = std::function<R(Args...)>;
 
-    Delegate(FunctionType func) : pDelegate(func) {
+    explicit Delegate(FunctionType func) : pDelegate(func) {
         pID = UUID::New();
     }
 
@@ -110,5 +111,6 @@ private:
     UUID pID;
 };
 
-
+inline static void DoNothing() {
+}
 #endif //DELEGATE_H

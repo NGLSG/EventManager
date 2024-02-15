@@ -4,4 +4,7 @@ project(MutilThreadSignal)
 set(CMAKE_CXX_STANDARD 23)
 
 add_executable(MutilThreadSignal main.cpp
-        Delegate.h)
+        Delegate.h
+        EventManager.h
+        Object.h
+        TimeTool.h)
