@@ -72,10 +72,11 @@ public:
         OFF
     };
 
-    static std::shared_ptr<Signal> Create(const std::string&sName) {
+    static std::shared_ptr<Signal> Register(const std::string&sName) {
         std::shared_ptr<Signal> _si = std::make_shared<Signal>();
         _si->sName = sName;
         _si->sID = UUID::New();
+        Manager::Register(_si);
         return _si;
     }
 
@@ -120,16 +121,37 @@ public:
 
     class Manager {
     public:
-        static inline void Register(std::shared_ptr<Signal> pSignal) {
+        static inline void Register(const std::shared_ptr<Signal>&pSignal) {
+            // 注册信号到ID映射
             sSignalMap[pSignal->ID().toString()] = pSignal;
+            // 注册信号名称到ID映射
+            sSignalName[pSignal->sName] = pSignal->ID().toString();
         }
 
-        static inline std::shared_ptr<Signal> GetSignal(UUID pID) {
-            return sSignalMap[pID.toString()];
+        static inline std::shared_ptr<Signal> GetSignal(const UUID pID) {
+            // 通过ID查找信号
+            auto it = sSignalMap.find(pID.toString());
+            if (it != sSignalMap.end()) {
+                return it->second;
+            }
+            return nullptr; // 如果信号不存在，返回nullptr
+        }
+
+        static inline std::shared_ptr<Signal> GetSignal(const std::string&sName) {
+            // 通过名称查找信号的ID，然后通过ID查找信号
+            auto itName = sSignalName.find(sName);
+            if (itName != sSignalName.end()) {
+                auto itSignal = sSignalMap.find(itName->second);
+                if (itSignal != sSignalMap.end()) {
+                    return itSignal->second;
+                }
+            }
+            return nullptr; // 如果信号名称不存在，或者信号不存在，返回nullptr
         }
 
     private:
-        static inline std::map<std::string, std::shared_ptr<Signal>> sSignalMap = {};
+        static inline std::unordered_map<std::string, std::shared_ptr<Signal>> sSignalMap = {};
+        static inline std::unordered_map<std::string, std::string> sSignalName = {};
     };
 
 private:
@@ -269,6 +291,10 @@ public:
         std::unique_lock<std::shared_mutex> lock(sSignalMapLock);
         sSignalMap.erase(pSignal.ID().toString());
         pSignal.~Signal();
+    }
+
+    static std::shared_ptr<Signal> Register(const std::string&sName) {
+        return Signal::Register(sName);
     }
 
     static inline void Boradcast(const UUID pID, const std::vector<Object>&args) {

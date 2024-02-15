@@ -54,7 +54,7 @@ int main() {
     try {
         StopWatch stopwatch;
 
-        auto si = Signal::Create("test");
+        auto si = Signal::Register("test");
         Foo foo;
 
         Calculator calculator;
