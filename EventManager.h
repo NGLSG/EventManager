@@ -167,7 +167,8 @@ protected:
 
 class EventManager {
 public:
-    static inline void BroadcastWithThreadPool(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args) {
+    static inline void BroadcastWithThreadPool(const std::shared_ptr<Signal>&pSignal,
+                                               const std::vector<Object>&args = {}) {
         std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
         pSignal->SetState(Signal::ON);
         auto pID = pSignal->ID();
@@ -199,7 +200,7 @@ public:
         }
     }
 
-    static inline void BroadcastAsync(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args) {
+    static inline void BroadcastAsync(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {}) {
         std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
         pSignal->SetState(Signal::ON);
         auto pID = pSignal->ID();
@@ -229,7 +230,7 @@ public:
         }
     }
 
-    static inline void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args) {
+    static inline void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {}) {
         std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
         pSignal->SetState(Signal::ON);
         auto pID = pSignal->ID();
