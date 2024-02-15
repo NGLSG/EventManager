@@ -298,8 +298,16 @@ public:
         return Signal::Register(sName);
     }
 
-    static inline void Boradcast(const UUID pID, const std::vector<Object>&args) {
+    static inline void BoradcastWithThreadPool(const UUID pID, const std::vector<Object>&args = {}) {
         BroadcastWithThreadPool(Signal::Manager::GetSignal(pID), args);
+    }
+
+    static inline void BroadcastAsync(const UUID pID, const std::vector<Object>&args = {}) {
+        BroadcastAsync(Signal::Manager::GetSignal(pID), args);
+    }
+
+    static inline void Broadcast(const UUID pID, const std::vector<Object>&args = {}) {
+        Broadcast(Signal::Manager::GetSignal(pID), args);
     }
 
     static inline void UnBroadcast(const UUID pID) {
