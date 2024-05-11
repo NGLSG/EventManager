@@ -68,7 +68,9 @@ namespace Event {
             pID = UUID::New();
         }
 
-        Delegate() = default;
+        Delegate(): pDelegate(nullptr), pInstance(nullptr) {
+            pID = UUID::New();
+        }
 
         void SetInstance(C* instance) {
             pInstance = instance;
@@ -105,6 +107,10 @@ namespace Event {
             return *this;
         }
 
+        UUID ID() const {
+            return pID;
+        }
+
     private:
         FunctionType pDelegate;
         UUID pID;
@@ -117,11 +123,13 @@ namespace Event {
     public:
         using FunctionType = std::function<R(Args...)>;
 
-        explicit Delegate(FunctionType func) : pDelegate(func) {
+        Delegate(FunctionType func) : pDelegate(func) {
             pID = UUID::New();
         }
 
-        Delegate() = default;
+        Delegate() {
+            pID = UUID::New();
+        }
 
         bool operator==(const Delegate&rhs) const {
             return pID == rhs.pID;
@@ -142,10 +150,8 @@ namespace Event {
             return *this;
         }
 
-        Delegate& operator=(R (*func)(Args...)) {
-            pDelegate = [func](Args... args) {
-                return func(args...);
-            };
+        UUID ID() const {
+            return pID;
         }
 
     private:

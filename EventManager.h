@@ -46,7 +46,7 @@ namespace Event {
 
         bool IsRecived() const;
 
-        void Trigger(const std::vector<Object>&args);
+        void Trigger(const std::vector<Object>&args={});
 
         void UnTrigger();
 
@@ -82,42 +82,42 @@ namespace Event {
 
     class EventManager {
     public:
-        static inline void BroadcastWithThreadPool(const std::shared_ptr<Signal>&pSignal,
-                                                   const std::vector<Object>&args = {});
+        static void BroadcastWithThreadPool(const std::shared_ptr<Signal>&pSignal,
+                                            const std::vector<Object>&args = {});
 
-        static inline void BroadcastAsync(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
+        static void BroadcastAsync(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
 
-        static inline void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
+        static void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
 
-        static inline void UnBroadcast(const std::shared_ptr<Signal>&pSignal);
+        static void UnBroadcast(const std::shared_ptr<Signal>&pSignal);
 
-        static inline void AddListener(const std::shared_ptr<Signal>&pSignal,
-                                       const auto&func);
+        static void AddListener(const std::shared_ptr<Signal>&pSignal,
+                                const auto&func);
 
-        static inline void RemoveListener(const std::shared_ptr<Signal>&pSignal,
-                                          const Delegate<void (std::vector<Object>)>&func);
+        static void RemoveListener(const std::shared_ptr<Signal>&pSignal,
+                                   const Delegate<void (std::vector<Object>)>&func);
 
-        static inline bool Received(const std::shared_ptr<Signal>&pSignal);
+        static bool Received(const std::shared_ptr<Signal>&pSignal);
 
         static void DeRegister(Signal&pSignal);
 
         static std::shared_ptr<Signal> Register(const std::string&sName);
 
-        static inline void BoradcastWithThreadPool(const UUID pID, const std::vector<Object>&args = {});
+        static void BoradcastWithThreadPool(const UUID pID, const std::vector<Object>&args = {});
 
-        static inline void BroadcastAsync(const UUID pID, const std::vector<Object>&args = {});
+        static void BroadcastAsync(const UUID pID, const std::vector<Object>&args = {});
 
-        static inline void Broadcast(const UUID pID, const std::vector<Object>&args = {});
+        static void Broadcast(const UUID pID, const std::vector<Object>&args = {});
 
-        static inline void UnBroadcast(const UUID pID);
+        static void UnBroadcast(const UUID pID);
 
-        static inline void AddListener(const UUID pID, const Delegate<void (std::vector<Object>)>&func);
+        static void AddListener(const UUID pID, const Delegate<void (std::vector<Object>)>&func);
 
-        static inline void RemoveListener(const UUID pID, const Delegate<void(std::vector<Object>)>&func);
+        static void RemoveListener(const UUID pID, const Delegate<void(std::vector<Object>)>&func);
 
-        static inline bool Received(const UUID pID);
+        static bool Received(const UUID pID);
 
-        static inline void DeRegister(const UUID pID);
+        static void DeRegister(const UUID pID);
 
     private:
         static inline std::unordered_map<std::string, std::tuple<std::vector<std::optional<Delegate<void (
