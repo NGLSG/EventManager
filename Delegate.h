@@ -1,116 +1,159 @@
 #ifndef DELEGATE_H
 #define DELEGATE_H
-#include <iostream>
 #include <thread>
 #include <future>
 #include <chrono>
 #include <random>
 #include <functional>
+#include <array>
 
-class UUID {
-public:
-    UUID() = default;
-
-    static UUID New() {
-        UUID uuid;
-        static std::random_device rd;
-        static std::mt19937 generator(rd());
-        static std::uniform_int_distribution<uint32_t> distribution(0, UINT32_MAX);
-
-        // 生成四个32位的随机数
-        for (auto&i: uuid.data) {
-            i = distribution(generator);
+namespace Event {
+    class UUID {
+    public:
+        UUID() : data({0}) {
         }
 
-        // 设置UUID版本号（4）和变体（RFC 4122）
-        uuid.data[1] = (uuid.data[1] & 0x0FFF) | 0x4000; // 设置版本号为4（0100）
-        uuid.data[2] = (uuid.data[2] & 0x3FFF) | 0x8000; // 设置变体为RFC 4122（1000）
+        static UUID New();
 
-        return uuid;
+        std::string toString() const;
+
+        friend bool operator==(const UUID&lhs, const UUID&rhs);
+
+    private:
+        std::array<uint32_t, 4> data;
+    };
+
+    // Delegate class
+    template<typename T>
+    class Delegate;
+
+    template<typename C, typename R, typename... Args>
+    Delegate<R (C::*)(Args...)> MakeDelegate(R (C::*memberFunc)(Args...), C&instance) {
+        return Delegate<R (C::*)(Args...)>(memberFunc, instance);
     }
 
-    std::string toString() const {
-        std::stringstream ss;
-        ss << std::hex << std::setfill('0');
-        for (size_t i = 0; i < data.size(); ++i) {
-            ss << std::setw(8) << data[i];
-            if (i < 3) {
-                ss << '-';
+    template<typename C, typename R, typename... Args>
+    Delegate<R (C::*)(Args...)> MakeDelegate(R (C::*memberFunc)(Args...)) {
+        return Delegate<R (C::*)(Args...)>(memberFunc);
+    }
+
+    template<typename R, typename... Args>
+    Delegate<R(Args...)> MakeDelegate(R (*func)(Args...)) {
+        return Delegate<R(Args...)>(func);
+    }
+
+    // Specialization for member functions
+    template<typename R, typename C, typename... Args>
+    class Delegate<R (C::*)(Args...)> {
+    public:
+        using FunctionType = std::function<R(C&, Args...)>;
+
+        Delegate(FunctionType func, C&instance) : pDelegate(func), pInstance(&instance) {
+            pID = UUID::New();
+        }
+
+        // 转换构造函数，允许从成员函数对象初始化
+        Delegate(R (C::*funcPtr)(Args...)) {
+            pDelegate = [funcPtr](C&instance, Args... args) -> R {
+                return (instance.*funcPtr)(std::forward<Args>(args)...);
+            };
+            pID = UUID::New();
+            pInstance = nullptr; // 当使用成员函数对象初始化时，实例指针应保持为 nullptr
+        }
+
+        //不传入Instance进行构造
+        Delegate(R (C::*func)(Args...), C* instance) : pDelegate([instance,func](Args... args) {
+            return (instance->*func)(std::forward<Args>(args)...);
+        }), pInstance(instance) {
+            pID = UUID::New();
+        }
+
+        Delegate() = default;
+
+        void SetInstance(C* instance) {
+            pInstance = instance;
+        }
+
+        bool operator==(const Delegate&rhs) const {
+            return pID == rhs.pID;
+        }
+
+        R operator()(Args... args) const {
+            if (pInstance) {
+                return pDelegate(*pInstance, std::forward<Args>(args)...);
             }
+            throw std::runtime_error("Instance is null");
         }
-        return ss.str();
-    }
 
-    bool operator==(const UUID&rhs) const {
-        return toString() == rhs.toString();
-    }
-
-private:
-    std::array<uint32_t, 4> data{};
-};
-
-// Delegate class
-template<typename T>
-class Delegate;
-
-// Specialization for member functions
-template<typename R, typename C, typename... Args>
-class Delegate<R (C::*)(Args...)> {
-public:
-    using FunctionType = std::function<R(C&, Args...)>;
-
-    Delegate(FunctionType func, C&instance) : pDelegate(func), pInstance(&instance) {
-        pID = UUID::New();
-    }
-
-    bool operator==(const Delegate&rhs) const {
-        return pID == rhs.pID;
-    }
-
-    R operator()(Args... args) const {
-        if (pInstance) {
-            return pDelegate(*pInstance, args...);
+        R operator()(C&instance, Args... args) const {
+            return pDelegate(instance, std::forward<Args>(args)...);
         }
-        throw std::runtime_error("Instance is null");
+
+        //转为普通委托
+        operator Delegate<R(Args...)>() const {
+            auto lambda = [&](Args... args) {
+                return pDelegate(*pInstance, std::forward<Args>(args)...);
+            };
+
+            return Delegate<R(Args...)>(lambda);
+        }
+
+        Delegate& operator=(const Delegate&rhs) {
+            pDelegate = rhs.pDelegate;
+            pInstance = rhs.pInstance;
+            pID = rhs.pID;
+            return *this;
+        }
+
+    private:
+        FunctionType pDelegate;
+        UUID pID;
+        C* pInstance; // Pointer to the instance
+    };
+
+    // Specialization for free functions
+    template<typename R, typename... Args>
+    class Delegate<R(Args...)> {
+    public:
+        using FunctionType = std::function<R(Args...)>;
+
+        explicit Delegate(FunctionType func) : pDelegate(func) {
+            pID = UUID::New();
+        }
+
+        Delegate() = default;
+
+        bool operator==(const Delegate&rhs) const {
+            return pID == rhs.pID;
+        }
+
+        R operator()(Args... args) const {
+            return pDelegate(std::forward<Args>(args)...);
+        }
+
+        Delegate& operator=(const Delegate&rhs) {
+            pDelegate = rhs.pDelegate;
+            pID = rhs.pID;
+            return *this;
+        }
+
+        Delegate& operator=(FunctionType func) {
+            pDelegate = func;
+            return *this;
+        }
+
+        Delegate& operator=(R (*func)(Args...)) {
+            pDelegate = [func](Args... args) {
+                return func(args...);
+            };
+        }
+
+    private:
+        FunctionType pDelegate;
+        UUID pID;
+    };
+
+    inline static void DoNothing() {
     }
-
-    operator Delegate<R(Args...)>() const {
-        auto lambda = [&](Args... args) {
-            return pDelegate(*pInstance, args...);
-        };
-
-        return Delegate<R(Args...)>(lambda);
-    }
-
-private:
-    FunctionType pDelegate;
-    UUID pID;
-    C* pInstance; // Pointer to the instance
-};
-
-// Specialization for free functions
-template<typename R, typename... Args>
-class Delegate<R(Args...)> {
-public:
-    using FunctionType = std::function<R(Args...)>;
-
-    explicit Delegate(FunctionType func) : pDelegate(func) {
-        pID = UUID::New();
-    }
-
-    bool operator==(const Delegate&rhs) const {
-        return pID == rhs.pID;
-    }
-
-    R operator()(Args... args) const {
-        return pDelegate(args...);
-    }
-
-private:
-    FunctionType pDelegate;
-    UUID pID;
-};
-
-inline static void DoNothing() {
 }
 #endif //DELEGATE_H

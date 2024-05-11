@@ -7,350 +7,125 @@
 #include "Delegate.h"
 #include "Object.h"
 
-class ThreadPool {
-public:
-    ThreadPool(size_t numThreads) : stop(false) {
-        for (size_t i = 0; i < numThreads; ++i) {
-            workers.emplace_back(
-                [this] {
-                    for (;;) {
-                        std::function<void()> task; {
-                            std::unique_lock<std::mutex> lock(this->queue_mutex);
-                            this->condition.wait(lock,
-                                                 [this] { return this->stop || !this->tasks.empty(); });
-                            if (this->stop && this->tasks.empty())
-                                return;
-                            task = std::move(this->tasks.front());
-                            this->tasks.pop();
-                        }
-
-                        task();
-                    }
-                }
-            );
-        }
-    }
-
-    ~ThreadPool() { {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            stop = true;
-        }
-        condition.notify_all();
-        for (std::thread&worker: workers) {
-            worker.join();
-        }
-    }
-
-    template<class F, class... Args>
-    auto enqueue(F&&f, Args&&... args) -> std::future<typename std::result_of<F(Args...)>::type> {
-        using return_type = typename std::result_of<F(Args...)>::type;
-        auto task = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
-        std::future<return_type> res = task->get_future(); {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            if (tasks.empty()) {
-                condition.notify_one();
-            }
-            tasks.push([task]() { (*task)(); });
-        }
-        return res;
-    }
-
-private:
-    std::vector<std::thread> workers;
-    std::queue<std::function<void()>> tasks;
-    std::mutex queue_mutex;
-    std::condition_variable condition;
-    bool stop;
-};
-
-class Signal {
-public:
-    enum State {
-        ON,
-        OFF
-    };
-
-    static std::shared_ptr<Signal> Register(const std::string&sName) {
-        std::shared_ptr<Signal> _si = std::make_shared<Signal>();
-        _si->sName = sName;
-        _si->sID = UUID::New();
-        Manager::Register(_si);
-        return _si;
-    }
-
-    ~Signal() {
-        pRecived.store(OFF);
-    }
-
-    std::string toString() const {
-        return sName;
-    }
-
-    UUID ID() const {
-        return sID;
-    }
-
-    void SetState(State state) {
-        std::async(std::launch::async, &Signal::internalSetState, this, state).wait();
-    }
-
-    bool IsRecived() const {
-        return pRecived.load() == ON;
-    }
-
-    void Emit(const std::vector<Object>&args);
-
-    void AddListener(const Delegate<void (std::vector<Object>)>&func);
-
-    void DeRegister();
-
-    Signal* operator =(Signal&pSignal) {
-        sName = pSignal.sName;
-        sID = pSignal.sID;
-        return this;
-    }
-
-    std::shared_ptr<Signal> operator =(std::shared_ptr<Signal> pSignal) {
-        sName = pSignal->sName;
-        sID = pSignal->sID;
-        return std::shared_ptr<Signal>(this, [](Signal*) {
-        });;
-    }
-
-    class Manager {
+namespace Event {
+    class ThreadPool {
     public:
-        static inline void Register(const std::shared_ptr<Signal>&pSignal) {
-            // 注册信号到ID映射
-            sSignalMap[pSignal->ID().toString()] = pSignal;
-            // 注册信号名称到ID映射
-            sSignalName[pSignal->sName] = pSignal->ID().toString();
-        }
+        using Task = std::function<void()>;
 
-        static inline std::shared_ptr<Signal> GetSignal(const UUID pID) {
-            // 通过ID查找信号
-            auto it = sSignalMap.find(pID.toString());
-            if (it != sSignalMap.end()) {
-                return it->second;
-            }
-            return nullptr; // 如果信号不存在，返回nullptr
-        }
+        ThreadPool(size_t numThreads);
 
-        static inline std::shared_ptr<Signal> GetSignal(const std::string&sName) {
-            // 通过名称查找信号的ID，然后通过ID查找信号
-            auto itName = sSignalName.find(sName);
-            if (itName != sSignalName.end()) {
-                auto itSignal = sSignalMap.find(itName->second);
-                if (itSignal != sSignalMap.end()) {
-                    return itSignal->second;
-                }
-            }
-            return nullptr; // 如果信号名称不存在，或者信号不存在，返回nullptr
-        }
+        ~ThreadPool();
+
+        template<class F, class... Args>
+        auto enqueue(F&&f, Args&&... args) -> std::future<typename std::invoke_result<F, Args...>::type>;
 
     private:
-        static inline std::unordered_map<std::string, std::shared_ptr<Signal>> sSignalMap = {};
-        static inline std::unordered_map<std::string, std::string> sSignalName = {};
+        std::vector<std::thread> workers;
+        std::queue<Task> tasks;
+        std::mutex queue_mutex;
+        std::condition_variable condition;
+        bool stop;
     };
 
-private:
-    void internalSetState(State state) {
-        pRecived.store(state);
-    }
+    class Signal : public std::enable_shared_from_this<Signal> {
+    public:
+        enum State {
+            ON,
+            OFF
+        };
 
-protected:
-    std::atomic<State> pRecived{OFF};
-    std::string sName;
-    UUID sID;
-};
+        static std::shared_ptr<Signal> Register(const std::string&sName);
 
-class EventManager {
-public:
-    static inline void BroadcastWithThreadPool(const std::shared_ptr<Signal>&pSignal,
-                                               const std::vector<Object>&args = {}) {
-        std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
-        pSignal->SetState(Signal::ON);
-        auto pID = pSignal->ID();
-        if (!sSignalMap.contains(pID.toString())) {
-            sSignalMap[pID.toString()] = std::make_tuple(
-                std::vector<std::optional<Delegate<void (std::vector<Object>)>>>(),
-                std::vector<Object>());
-        }
-        else {
-            auto&[funcList, argsList] = sSignalMap[pID.toString()];
-            argsList = args;
-            ThreadPool pool(std::thread::hardware_concurrency()); // 创建一个线程池，大小为硬件并发数
+        ~Signal();
 
-            // 使用线程池执行每个注册的处理函数
-            std::vector<std::future<void>> futures;
-            for (auto&func: funcList) {
-                if (func.has_value()) {
-                    futures.emplace_back(pool.enqueue([func, args] {
-                        func.value()(args);
-                    }));
-                }
-            }
+        std::string toString() const;
 
-            // 等待所有异步任务完成
-            for (auto&future: futures) {
-                future.wait();
-            }
-            futures.clear();
-        }
-    }
+        UUID ID() const;
 
-    static inline void BroadcastAsync(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {}) {
-        std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
-        pSignal->SetState(Signal::ON);
-        auto pID = pSignal->ID();
-        if (!sSignalMap.contains(pID.toString())) {
-            sSignalMap[pID.toString()] = std::make_tuple(
-                std::vector<std::optional<Delegate<void (std::vector<Object>)>>>(),
-                std::vector<Object>());
-        }
-        else {
-            auto&[funcList, argsList] = sSignalMap[pID.toString()];
-            argsList = args;
+        void SetState(State state);
 
-            // 存储所有的 std::future
-            std::vector<std::future<void>> futures;
+        bool IsRecived() const;
 
-            // 异步执行每个注册的处理函数
-            for (auto&func: funcList) {
-                if (func.has_value())
-                    futures.emplace_back(std::async(std::launch::async, func.value(), args));
-            }
+        void Trigger(const std::vector<Object>&args);
 
-            // 等待所有异步任务完成
-            for (auto&future: futures) {
-                future.wait();
-            }
-            futures.clear();
-        }
-    }
+        void UnTrigger();
 
-    static inline void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {}) {
-        std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
-        pSignal->SetState(Signal::ON);
-        auto pID = pSignal->ID();
-        if (!sSignalMap.contains(pID.toString())) {
-            sSignalMap[pID.toString()] = std::make_tuple(
-                std::vector<std::optional<Delegate<void (std::vector<Object>)>>>(),
-                std::vector<Object>());
-        }
-        else {
-            auto&[funcList, argsList] = sSignalMap[pID.toString()];
-            argsList = args;
+        void AddListener(const Delegate<void (std::vector<Object>)>&func);
 
-            for (auto&func: funcList) {
-                if (func.has_value())
-                    func.value()(args);
-            }
-        }
-    }
+        void DeRegister();
 
-    static inline void UnBroadcast(const std::shared_ptr<Signal>&pSignal) {
-        std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
-        pSignal->SetState(Signal::OFF);
-    }
+        Signal* operator =(Signal&pSignal);
 
-    static inline void AddListener(const std::shared_ptr<Signal>&pSignal,
-                                   const Delegate<void (std::vector<Object>)>&func) {
-        std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
+        std::shared_ptr<Signal> operator =(std::shared_ptr<Signal> pSignal);
 
-        if (!sSignalMap.contains(pSignal->ID().toString())) {
-            sSignalMap[pSignal->ID().toString()] = std::make_tuple(
-                std::vector<std::optional<Delegate<void (std::vector<Object>)>>>{func},
-                std::vector<Object>());
-        }
-        else {
-            auto&[funcList, argsList] = sSignalMap[pSignal->ID().toString()];
-            funcList.emplace_back(func);
-        }
-    }
+        class Manager {
+        public:
+            static inline void Register(const std::shared_ptr<Signal>&pSignal);
 
-    static inline void RemoveListener(const std::shared_ptr<Signal>&pSignal,
-                                      const Delegate<void (std::vector<Object>)>&func) {
-        std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
+            static inline std::shared_ptr<Signal> GetSignal(const UUID pID);
 
-        if (const auto it = sSignalMap.find(pSignal->ID().toString()); it != sSignalMap.end()) {
-            auto&[funcList, argsList] = it->second;
-            std::erase_if(funcList,
-                          [&](const std::optional<Delegate<void (std::vector<Object>)>>&optFunc) {
-                              return optFunc.has_value() && (optFunc.value() == func);
-                          });
-        }
-    }
+            static inline std::shared_ptr<Signal> GetSignal(const std::string&sName);
 
-    static inline bool Received(const std::shared_ptr<Signal>&pSignal) {
-        std::shared_lock<std::shared_mutex> lock(sSignalMapLock);
-        return pSignal->IsRecived();
-    }
+        private:
+            static inline std::unordered_map<std::string, std::shared_ptr<Signal>> sSignalMap = {};
+            static inline std::unordered_map<std::string, std::string> sSignalName = {};
+        };
 
-    static void DeRegister(Signal&pSignal) {
-        std::unique_lock<std::shared_mutex> lock(sSignalMapLock);
-        sSignalMap.erase(pSignal.ID().toString());
-        pSignal.~Signal();
-    }
+    private:
+        void internalSetState(State state);
 
-    static std::shared_ptr<Signal> Register(const std::string&sName) {
-        return Signal::Register(sName);
-    }
+    protected:
+        std::atomic<State> pRecived{OFF};
+        std::string sName;
+        UUID sID;
+    };
 
-    static inline void BoradcastWithThreadPool(const UUID pID, const std::vector<Object>&args = {}) {
-        BroadcastWithThreadPool(Signal::Manager::GetSignal(pID), args);
-    }
+    class EventManager {
+    public:
+        static inline void BroadcastWithThreadPool(const std::shared_ptr<Signal>&pSignal,
+                                                   const std::vector<Object>&args = {});
 
-    static inline void BroadcastAsync(const UUID pID, const std::vector<Object>&args = {}) {
-        BroadcastAsync(Signal::Manager::GetSignal(pID), args);
-    }
+        static inline void BroadcastAsync(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
 
-    static inline void Broadcast(const UUID pID, const std::vector<Object>&args = {}) {
-        Broadcast(Signal::Manager::GetSignal(pID), args);
-    }
+        static inline void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
 
-    static inline void UnBroadcast(const UUID pID) {
-        UnBroadcast(Signal::Manager::GetSignal(pID));
-    }
+        static inline void UnBroadcast(const std::shared_ptr<Signal>&pSignal);
 
-    static inline void AddListener(const UUID pID, const Delegate<void (std::vector<Object>)>&func) {
-        AddListener(Signal::Manager::GetSignal(pID), func);
-    }
+        static inline void AddListener(const std::shared_ptr<Signal>&pSignal,
+                                       const auto&func);
 
-    static inline void RemoveListener(const UUID pID, const Delegate<void(std::vector<Object>)>&func) {
-        RemoveListener(Signal::Manager::GetSignal(pID), func);
-    }
+        static inline void RemoveListener(const std::shared_ptr<Signal>&pSignal,
+                                          const Delegate<void (std::vector<Object>)>&func);
 
-    static inline bool Received(const UUID pID) {
-        return Received(Signal::Manager::GetSignal(pID));
-    }
+        static inline bool Received(const std::shared_ptr<Signal>&pSignal);
 
-    static inline void DeRegister(const UUID pID) {
-        DeRegister(*Signal::Manager::GetSignal(pID));
-    }
+        static void DeRegister(Signal&pSignal);
 
-private:
-    static inline std::unordered_map<std::string, std::tuple<std::vector<std::optional<Delegate<void (
-            std::vector<Object>)>>>,
-        std::vector<
-            Object>>>
-    sSignalMap;
-    static inline std::shared_mutex sSignalMapLock;
-};
+        static std::shared_ptr<Signal> Register(const std::string&sName);
 
-inline void Signal::Emit(const std::vector<Object>&args) {
-    EventManager::BroadcastWithThreadPool(std::shared_ptr<Signal>(this, [](Signal*) {
-    }), args);
+        static inline void BoradcastWithThreadPool(const UUID pID, const std::vector<Object>&args = {});
+
+        static inline void BroadcastAsync(const UUID pID, const std::vector<Object>&args = {});
+
+        static inline void Broadcast(const UUID pID, const std::vector<Object>&args = {});
+
+        static inline void UnBroadcast(const UUID pID);
+
+        static inline void AddListener(const UUID pID, const Delegate<void (std::vector<Object>)>&func);
+
+        static inline void RemoveListener(const UUID pID, const Delegate<void(std::vector<Object>)>&func);
+
+        static inline bool Received(const UUID pID);
+
+        static inline void DeRegister(const UUID pID);
+
+    private:
+        static inline std::unordered_map<std::string, std::tuple<std::vector<std::optional<Delegate<void (
+                std::vector<Object>)>>>,
+            std::vector<
+                Object>>>
+        sSignalMap;
+        static inline std::shared_mutex sSignalMapLock;
+    };
 }
-
-inline void Signal::AddListener(const Delegate<void(std::vector<Object>)>&func) {
-    EventManager::AddListener(std::shared_ptr<Signal>(this, [](Signal*) {
-    }), func);
-}
-
-inline void Signal::DeRegister() {
-    EventManager::DeRegister(*this);
-}
-
 #endif //EVENTMANAGER_H
