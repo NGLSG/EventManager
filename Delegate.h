@@ -28,8 +28,13 @@ namespace Event {
     class Delegate;
 
     template<typename C, typename R, typename... Args>
-    Delegate<R (C::*)(Args...)> MakeDelegate(R (C::*memberFunc)(Args...), C&instance) {
+    Delegate<R (C::*)(Args...)> MakeDelegate(R (C::*memberFunc)(Args...), std::shared_ptr<C> instance) {
         return Delegate<R (C::*)(Args...)>(memberFunc, instance);
+    }
+
+    template<typename C, typename R, typename... Args>
+    Delegate<R (C::*)(Args...)> MakeDelegate(R (C::*memberFunc)(Args...), C&instance) {
+        return Delegate<R (C::*)(Args...)>(memberFunc, std::make_shared<C>(instance));
     }
 
     template<typename C, typename R, typename... Args>
@@ -47,18 +52,19 @@ namespace Event {
     class Delegate<R (C::*)(Args...)> {
     public:
         using FunctionType = std::function<R(C&, Args...)>;
+        using InstancePtr = std::shared_ptr<C>;
 
-        Delegate(FunctionType func, C&instance) : pDelegate(func), pInstance(&instance) {
+        Delegate(FunctionType func, const InstancePtr&instance) : pDelegate(func), pInstance(instance) {
             pID = UUID::New();
         }
 
         // 转换构造函数，允许从成员函数对象初始化
-        Delegate(R (C::*funcPtr)(Args...)) {
+        Delegate(R (C::*funcPtr)(Args...), const InstancePtr&instance) {
             pDelegate = [funcPtr](C&instance, Args... args) -> R {
                 return (instance.*funcPtr)(std::forward<Args>(args)...);
             };
             pID = UUID::New();
-            pInstance = nullptr; // 当使用成员函数对象初始化时，实例指针应保持为 nullptr
+            pInstance = instance; // 当使用成员函数对象初始化时，实例指针应该被传入
         }
 
         //不传入Instance进行构造
@@ -72,7 +78,7 @@ namespace Event {
             pID = UUID::New();
         }
 
-        void SetInstance(C* instance) {
+        void SetInstance(const InstancePtr&instance) {
             pInstance = instance;
         }
 
@@ -85,6 +91,10 @@ namespace Event {
                 return pDelegate(*pInstance, std::forward<Args>(args)...);
             }
             throw std::runtime_error("Instance is null");
+        }
+
+        R operator()(std::shared_ptr<C> instance, Args... args) const {
+            return pDelegate(*instance, std::forward<Args>(args)...);
         }
 
         R operator()(C&instance, Args... args) const {
@@ -114,7 +124,7 @@ namespace Event {
     private:
         FunctionType pDelegate;
         UUID pID;
-        C* pInstance; // Pointer to the instance
+        InstancePtr pInstance; // Pointer to the instance
     };
 
     // Specialization for free functions

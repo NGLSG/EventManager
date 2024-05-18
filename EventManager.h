@@ -29,6 +29,14 @@ namespace Event {
 
     class Signal : public std::enable_shared_from_this<Signal> {
     public:
+        enum TriggerType {
+            NORMAL,
+            ONCE,
+            THREADPOOL,
+            ASYNC,
+            MULTIPLE
+        };
+
         enum State {
             ON,
             OFF
@@ -46,7 +54,8 @@ namespace Event {
 
         bool IsRecived() const;
 
-        void Trigger(const std::vector<Object>&args={});
+        template<TriggerType type = ONCE>
+        void Trigger(const std::vector<Object>&args = {});
 
         void UnTrigger();
 
@@ -89,6 +98,8 @@ namespace Event {
 
         static void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
 
+        static void BroadcastMultiple(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
+
         static void UnBroadcast(const std::shared_ptr<Signal>&pSignal);
 
         static void AddListener(const std::shared_ptr<Signal>&pSignal,
@@ -108,6 +119,8 @@ namespace Event {
         static void BroadcastAsync(const UUID pID, const std::vector<Object>&args = {});
 
         static void Broadcast(const UUID pID, const std::vector<Object>&args = {});
+
+        static void BroadcastMultiple(const UUID pID, const std::vector<Object>&args = {});
 
         static void UnBroadcast(const UUID pID);
 

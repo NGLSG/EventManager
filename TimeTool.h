@@ -4,7 +4,11 @@
 #include <future>
 
 #include "Delegate.h"
-
+#define START_TIMER auto start = std::chrono::high_resolution_clock::now();
+#define END_TIMER auto end = std::chrono::high_resolution_clock::now(); \
+std::cout << "Duration: " \
+<< std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() \
+<< " microseconds." << std::endl;
 namespace Event {
     class StopWatch {
     public:
