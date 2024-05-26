@@ -6,9 +6,10 @@
 #include <random>
 #include <functional>
 #include <array>
+#include <set>
 
 namespace Event {
-    class UUID {
+    struct UUID {
     public:
         UUID() : data({0}) {
         }
@@ -17,9 +18,15 @@ namespace Event {
 
         std::string toString() const;
 
-        friend bool operator==(const UUID&lhs, const UUID&rhs);
+        std::array<uint32_t, 4> GetData() const {
+            return data;
+        }
+        bool operator==(const UUID& other) const;
+
+        bool operator<(const UUID& other) const;
 
     private:
+        inline static std::set<UUID> uuids;
         std::array<uint32_t, 4> data;
     };
 
@@ -172,4 +179,5 @@ namespace Event {
     inline static void DoNothing() {
     }
 }
+
 #endif //DELEGATE_H

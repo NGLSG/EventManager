@@ -27,15 +27,71 @@ namespace Event {
         bool stop;
     };
 
+
     class Signal : public std::enable_shared_from_this<Signal> {
     public:
-        enum TriggerType {
-            NORMAL,
+        enum class TriggerType : unsigned int {
+            NORMAL = 1 << 0,
             ONCE,
             THREADPOOL,
             ASYNC,
-            MULTIPLE
+            MULTIPLE,
         };
+
+        // 重载位或运算符 |
+        friend TriggerType operator|(TriggerType lhs, TriggerType rhs){
+            return static_cast<TriggerType>(static_cast<unsigned int>(lhs) | static_cast<unsigned int>(rhs));
+        }
+
+        // 重载位与运算符 &
+        friend TriggerType operator&(TriggerType lhs, TriggerType rhs){
+            return static_cast<TriggerType>(static_cast<unsigned int>(lhs) & static_cast<unsigned int>(rhs));
+        }
+
+        // 重载左移运算符 <<
+        friend std::ostream& operator<<(std::ostream&os, TriggerType type)  {
+            switch (type) {
+                case TriggerType::NORMAL:
+                    os << "NORMAL";
+                    break;
+                case TriggerType::ONCE:
+                    os << "ONCE";
+                    break;
+                case TriggerType::THREADPOOL:
+                    os << "THREADPOOL";
+                    break;
+                case TriggerType::ASYNC:
+                    os << "ASYNC";
+                    break;
+                case TriggerType::MULTIPLE:
+                    os << "MULTIPLE";
+                    break;
+                default:
+                    os << "Unknown";
+                    break;
+            }
+            return os;
+        }
+
+        // 重载位取反运算符 ~
+        friend TriggerType operator~(TriggerType value) {
+            return static_cast<TriggerType>(~static_cast<unsigned int>(value));
+        }
+
+        // 重载异或运算符 ^
+        friend TriggerType operator^(TriggerType lhs, TriggerType rhs) {
+            return static_cast<TriggerType>(static_cast<unsigned int>(lhs) ^ static_cast<unsigned int>(rhs));
+        }
+
+        // 重载比较运算符 ==
+        friend bool operator==(TriggerType lhs, unsigned int rhs) {
+            return static_cast<unsigned int>(lhs) == rhs;
+        }
+
+        // 重载比较运算符 !=
+        friend bool operator!=(TriggerType lhs, unsigned int rhs) {
+            return static_cast<unsigned int>(lhs) != rhs;
+        }
 
         enum State {
             ON,
@@ -54,8 +110,7 @@ namespace Event {
 
         bool IsRecived() const;
 
-        template<TriggerType type = ONCE>
-        void Trigger(const std::vector<Object>&args = {});
+        void Trigger(const std::vector<Object>&args = {}, TriggerType type = TriggerType::ONCE | TriggerType::NORMAL);
 
         void UnTrigger();
 
