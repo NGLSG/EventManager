@@ -25,6 +25,8 @@ namespace Event {
 
         bool operator<(const UUID& other) const;
 
+        std::ostream& operator<<(std::ostream& os) const;
+
     private:
         inline static std::set<UUID> uuids;
         std::array<uint32_t, 4> data;

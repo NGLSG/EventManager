@@ -9,7 +9,7 @@ int add(int, int) {
 }
 
 void TestFunc(std::vector<Event::Object> args) {
-    std::cout << "TestFunc2" << std::endl;
+    std::cout << "TestFunc2: " << args[0].Cast<int>().value() << std::endl;
 }
 
 
@@ -23,7 +23,7 @@ public:
     }
 
     void TestFunc(std::vector<Event::Object> args) {
-        std::cout << "TestFunc1" << std::endl;
+        std::cout << "TestFunc1: " << args[0].Cast<int>().value() << std::endl;
     }
 };
 
@@ -44,14 +44,12 @@ int main() {
     std::shared_ptr<Test> test;
     auto e = Event::MakeDelegate(&Test::TestFunc, test);
     Event::Delegate<void(std::vector<Event::Object>)> e2 = e;
-    std::function<void(std::vector<Event::Object>)> f = e2;
+    std::function f = e2;
     e2({1, 2});
     auto s = Event::Signal::Register("Test");
+    s->ModifyDefaultArgs({10086, 2});
     Event::EventManager::AddListener(s, e2);
-    s->Trigger({1, 1}, Event::Signal::TriggerType::ONCE | Event::Signal::TriggerType::MULTIPLE);
-    if (s->IsRecived()) {
-        std::cout << "Recived" << std::endl;
-    }
     e(test, {1, 2});
+    s->Trigger();
     return 0;
 }

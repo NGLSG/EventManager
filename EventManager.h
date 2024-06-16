@@ -32,24 +32,25 @@ namespace Event {
     public:
         enum class TriggerType : unsigned int {
             NORMAL = 1 << 0,
-            ONCE,
-            THREADPOOL,
-            ASYNC,
-            MULTIPLE,
+            ONCE = 1 << 1,
+            THREADPOOL = 1 << 2, // 线程池标志
+            ASYNC = 1 << 3,
+            MULTIPLE = 1 << 4,
+            CONTINUOUS = 1 << 5
         };
 
         // 重载位或运算符 |
-        friend TriggerType operator|(TriggerType lhs, TriggerType rhs){
+        friend TriggerType operator|(TriggerType lhs, TriggerType rhs) {
             return static_cast<TriggerType>(static_cast<unsigned int>(lhs) | static_cast<unsigned int>(rhs));
         }
 
         // 重载位与运算符 &
-        friend TriggerType operator&(TriggerType lhs, TriggerType rhs){
+        friend TriggerType operator&(TriggerType lhs, TriggerType rhs) {
             return static_cast<TriggerType>(static_cast<unsigned int>(lhs) & static_cast<unsigned int>(rhs));
         }
 
         // 重载左移运算符 <<
-        friend std::ostream& operator<<(std::ostream&os, TriggerType type)  {
+        friend std::ostream& operator<<(std::ostream&os, TriggerType type) {
             switch (type) {
                 case TriggerType::NORMAL:
                     os << "NORMAL";
@@ -114,13 +115,21 @@ namespace Event {
 
         void UnTrigger();
 
-        void AddListener(const Delegate<void (std::vector<Object>)>&func);
+        void AddListener(const Delegate<void (std::vector<Object>)>&func, const std::vector<Object>&defaultArgs = {});
 
         void DeRegister();
+
+        void ModifyDefaultArgs(const std::vector<Object>&defaultArgs);
+
+        std::vector<Object> GetDefaultArgs();
 
         Signal* operator =(Signal&pSignal);
 
         std::shared_ptr<Signal> operator =(std::shared_ptr<Signal> pSignal);
+
+        State GetState() const {
+            return pState;
+        }
 
         class Manager {
         public:
@@ -139,7 +148,7 @@ namespace Event {
         void internalSetState(State state);
 
     protected:
-        std::atomic<State> pRecived{OFF};
+        std::atomic<State> pState{OFF};
         std::string sName;
         UUID sID;
     };
@@ -153,12 +162,17 @@ namespace Event {
 
         static void Broadcast(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
 
+        static void BroadcastRepeat(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
+
+        static void BroadcastRepeat(const UUID pid, const std::vector<Object>&args = {});
+
+
         static void BroadcastMultiple(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args = {});
 
         static void UnBroadcast(const std::shared_ptr<Signal>&pSignal);
 
         static void AddListener(const std::shared_ptr<Signal>&pSignal,
-                                const auto&func);
+                                const auto&func, const std::vector<Object>&defaultArgs = {});
 
         static void RemoveListener(const std::shared_ptr<Signal>&pSignal,
                                    const Delegate<void (std::vector<Object>)>&func);
@@ -179,7 +193,8 @@ namespace Event {
 
         static void UnBroadcast(const UUID pID);
 
-        static void AddListener(const UUID pID, const Delegate<void (std::vector<Object>)>&func);
+        static void AddListener(const UUID pID, const Delegate<void (std::vector<Object>)>&func,
+                                const std::vector<Object>&defaultArgs = {});
 
         static void RemoveListener(const UUID pID, const Delegate<void(std::vector<Object>)>&func);
 
@@ -187,12 +202,22 @@ namespace Event {
 
         static void DeRegister(const UUID pID);
 
+        static std::vector<Object> GetDefaultArgs(const UUID pID);
+
+        static std::vector<Object> GetDefaultArgs(const std::shared_ptr<Signal>&pSignal);
+
+        static void ModifyDefaultArgs(const UUID pID, const std::vector<Object>&args);
+
+        static void ModifyDefaultArgs(const std::shared_ptr<Signal>&pSignal, const std::vector<Object>&args);
+
     private:
         static inline std::unordered_map<std::string, std::tuple<std::vector<std::optional<Delegate<void (
                 std::vector<Object>)>>>,
             std::vector<
                 Object>>>
         sSignalMap;
+
+        static inline std::unordered_map<std::string, std::vector<Object>> sSignalDefaultArgs;
         static inline std::shared_mutex sSignalMapLock;
     };
 }
